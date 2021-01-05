@@ -1,0 +1,392 @@
+---
+title: "HW4 - Intro to MCMC"
+author: "Yunshuang Jiang UID:704439395"
+date: "May 1, 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Homework Questions, copyright Miles Chen. Do not post or distribute without permission.
+
+## Problem 1 - Bayesian Infernce with conjugate priors
+
+The Gamma distribution has a pdf of the form:
+
+$$f(x; \alpha, \beta) = \frac{\beta^\alpha}{\Gamma(\alpha)}x^{\alpha - 1} e^{-\beta x}$$
+
+It has two shape parameters $\alpha$ and $\beta$. Many distributions (including the exponential and chi-squared distributions) can be written in the form of a gamma distribution. We will take a look at the gamma distribution because it serves as a conjugate-prior for many distributions.
+
+When looking at the pdf of the gamma distribution, you can ignore the scary looking constant in the front $\frac{\beta^\alpha}{\Gamma(\alpha)}$, as its only purpose is to make sure the pdf integrates to 1.
+
+The exponential distribution has the following pdf, defined by the rate parameter $\lambda$.
+
+$$f(x;\lambda) = \lambda e^{-\lambda x}$$
+
+The exponential distribution can be used to model the time between events, such as the time between customers entering a store. The $\lambda$ parameter is the rate (the number of arrivals per time block). If we are trying to model customers entering a store each hour, and if $\lambda = 2$, that means the average rate is two arrivals per hour. The expected time between customers is $1/\lambda = 0.5$, meaning the mean time between customers is half an hour.
+
+In this problem, we are trying to model customers entering a small business and will use Bayesian inference to create a distribution for the rate parameter. You talk to the business owner who tells you that sometimes the business gets busy and will see 20 customers in an hour. Other times, it's slow, and maybe only 3 or 4 customers come. But overall, the owner estimates the average is something like 8 customers per hour, give or take a few.
+
+Taking this into account, you decide to use a Gamma distribution with shape parameters $\alpha = 8$ and $\beta = 1$ as the prior distribution for the rate $\lambda$.
+
+```{r}
+s <- seq(0, 30, by = 0.01)
+plot(s, dgamma(s, 8, 1), type = 'l')
+
+```
+
+You decide to collect data by timing how long you wait between customer arrivals.
+
+You gather the following values, measured in fractions of an hour:
+
+```{r}
+y <- c(0.131, 0.078, 0.297, 0.024, 0.016, 0.057, 0.070, 0.148, 0.070, 0.109)
+# after you started the stop watch, the first customer arrived after 7 minutes and 52 seconds (0.131 of an hour)
+# the next customer came 4 minutes and 41 seconds after that (0.078 of an hour). etc. etc.
+# You gathered values for 10 customers total.
+# Conveniently, they add up to exactly one hour!
+```
+
+I have written a simple function `l()` to calculate the likelihood of the data for a given lambda. It simply takes the pdf of each data point and returns the product.
+
+```{r}
+s <- seq(0, 30, by = 0.01)
+l <- function(lambda){
+  y <- c(0.131, 0.078, 0.297, 0.024, 0.016, 0.057, 0.070, 0.148, 0.070, 0.109)
+  prod(lambda * exp(-lambda * y))
+}
+
+res <- rep(NA, length(s))
+for(i in 1:length(s)){
+  res[i] <- l(s[i])
+}
+
+plot(s, res, type = 'l', main = 'likelihood of given data as a function of lambda')
+```
+
+Calculate the likelihood function for lambda mathematically. The total likelihood of the data (which is assumed to be iid) is the product of each point's probability. You can take advantage of the fact that the sum of the y's is 1.
+
+Write down your equation of the likelihood function.
+
+$$l(\lambda) = \lambda^{10} e^{-1\lambda}$$ 
+
+Create a plot of your mathematical likelihood function for values of lambda between 0 and 30. Is it identical to the plot I have provided above?
+
+```{r}
+s <- seq(0, 30, by = 0.01)
+likeli <- function(x) {x^10*exp(-x)}
+data <- data.frame(s, likeli(s))
+plot(data,type = 'l')
+```
+
+Yes, it is identical. \newline
+
+Mathematically, find the posterior distribution of lambda given the data.
+
+
+
+Hints: We know that the posterior distribution is proportional to the likelihood times the prior. We also know that the gamma distribution is the conjugate prior for the exponential distribution. This means that the posterior distribution of lambda will be a gamma distribution.
+
+$$p(\lambda | y) \propto p(y | \lambda) p(y)$$
+
+Start by multiplying the likelihood by the prior (a gamma distribution). Then, using algebra, rearrange terms so that the posterior is in the form of a gamma distribution with parameters $\alpha$ and $\beta$. If you temporarily ignore the normalizing constant in the gamma distribution, it is in the form $x^{\text{constant1}}e^{\text{-constant2}\cdot x}$
+
+
+Your answer: The posterior distribution of lambda given the data is a gamma distribution with parameters $\alpha=18$ and $\beta=2$.
+
+$$posterior \propto likelihood * prior$$
+
+$$posterior \propto (\lambda^{10} e^{-1\lambda}) * (\lambda^{7} e^{-1\lambda}) \propto(\lambda^{17} e^{-2\lambda}) \propto  gamma(18,2)$$
+
+Graph the posterior distribution.
+
+```{r}
+s <- seq(0, 30, by = 0.01)
+plot(s, dgamma(s,18, 2), type = 'l')
+```
+
+
+## Problem 2 - Transition Matrix and Stationary Distribution (Two state case)
+
+Imagine a two-state Markov chain. With state 1 representing CA and state 2 representing TX.
+
+Let's pretend that each year, 9% of Californians move to TX and that 12% of Texans move to CA.
+
+Create and display a 2x2 transition matrix $\mathbf{P}$ to represent the transition probabilities.
+
+Calculate and display the stationary distribution $\mathbf{w}$, so that $\mathbf{wP} = \mathbf{w}$.
+
+
+```{r}
+P <- matrix(c(0.91,0.09,0.12,0.88), byrow = TRUE, nrow = 2)
+P 
+w1 <- P[2,1]/(P[2,1]+P[1,2])
+w2 <- P[1,2]/(P[2,1]+P[1,2])
+w <- matrix(c(w1,w2), nrow=1)
+w
+w %*% P #prove that w is indeed the stationary distribution
+```
+
+The form $\mathbf{wP} = \mathbf{w}$ is very similar to the definition of an eigenvector. Except with eigenvectors, we would write $\mathbf{Ax} = \lambda\mathbf{x}$. (The multiplication is the matrix times the vector, rather than the vector times the matrix.) If we take transposes, $(\mathbf{wP})^T = \mathbf{w}^T$, we get $\mathbf{P}^T\mathbf{w}^T = \mathbf{w}^T$. Thus, the transpose of the transition matrix has an eigenvector with an eigenvalue of 1 that is equal to the stationary distribution.
+
+Find the eigenvectors of P transpose. Show that your stationary distribution is a scalar multiple of the positive eigenvector.
+```{r}
+eigen <- eigen(t(P))
+eigenv <- eigen$vectors[,1]
+eigenv
+eigenv[1]/w1 
+eigenv[2]/w2
+```
+
+The eigenvectors of P tranpose is[0.8,0.6], and it is a multiple (1.4 times) of our stationary distribution [0.5714286, 0.4285714]. \newline
+
+
+## Problem 2 - Transition Matrix and Stationary Distribution (7 island example)
+
+Look at the example with the politician visiting the island chain in chapter 7 of the textbook, Doing Bayesian Data Analysis.
+
+Create and display the full 7 x 7 transition matrix P. Populate the matrix with actual decimal values, and not symbols.
+
+```{r}
+P <- matrix(c(1/2,1/4,0,0,0,0,0,1/2,1/4,2/6,0,0,0,0,0,1/2,1/6,3/8,0,0,0,0,0,1/2,1/8,4/10,0,0,0,0,0,1/2,1/10,5/12,0,0,0,0,0,1/2,1/12,6/14,0,0,0,0,0,1/2,8/14), nrow=7, byrow = FALSE)
+P
+```
+
+Start with w = c(0,0,0,1,0,0,0)
+
+Multiply w by P 6 times and show the results after each iteration. (for example, after the first multiplication, w should equal c(0,0, 0.375, 0.125, 0.5, 0, 0))
+```{r}
+w = c(0,0,0,1,0,0,0)
+for (i in 1:6) {
+  w <- w %*% P
+  print(w)}
+```
+
+
+Find the eigenvectors of the transpose of the transition matrix. Show that it is a scalar multiple of the stationary (target) distribution specified by the example.
+
+```{r, error = TRUE}
+eigenv <- eigen(t(P))$vectors
+statdis <- c(1:7)/sum(1:7)  #stationary distribution
+eigenv[,1]/statdis  #show that eigenv is an scalar multiple of stationary distribution
+```
+
+Multiply w by P 500 times. Show the results after the final iteration. Do NOT show the steps in between. Did the distribution converge to the stationary distribution?
+```{r}
+w = c(0,0,0,1,0,0,0)
+for(i in 1:500){
+  w <- w %*% P
+}
+print(w)
+statdis
+```
+It converge to the target distribution. \newline
+
+## Problem 4 - MCMC (Metropolis Algorithm) for a single continuous random variable
+
+We will compare Rejection Sampling to the Metropolis Algorithm for producing a sample from a distribution.
+
+The logisitic distribution is a unimodal and symmetric distribution, where the CDF is a logistic curve. The shape is similar to a normal distribution, but has heavier tails (though not as heavy as a Cauchy distribution).
+
+The PDF is:
+
+$$f(x; \mu, s) = \frac{1}{s} \frac{e^{-(\frac{x-\mu}{s})} }{\left( 1 + e^{-(\frac{x-\mu}{s})} \right)^2}$$
+
+Luckily, this is implemented for us in R with `dlogis()`, which you are allowed to use to calculate the probability density of a (proposed) value.
+
+We will generate two samples drawn from a logistic distribution with mean = 0 and scale = 1.
+
+### Task 4A:
+
+First generate a sample from the logistic distribution using rejection sampling. Propose 10^4 values from a random uniform distribution from -20 to 20. Calculate the necessary constant M, and implement rejection sampling. If you propose 10^4 values, how many values do you end accepting?
+```{r}
+set.seed(1)
+f <- function(x){dunif(x, -20, 20)/dlogis(x, location  = 0, scale = 1)}
+max <- optimize(f, interval=c(-20,20))
+m <- 1/max$objective
+
+f <- function(x){return(dlogis(x))}
+g <- 0.025
+iter<- 0
+accept <- list()
+rej_fun <- function(n){
+  while(iter <= n){
+    u = runif(1)
+    x = runif(1, -20, 20)
+    if(u <= f(x)/(m*g)){
+      accept[length(accept)+1] <- x
+    }
+    iter <- iter+1
+  }
+  return (unlist(accept))
+}
+acceptvalue <- rej_fun(10^4)
+len <- length(acceptvalue)
+```
+M is `r m`.\newline
+
+I accepted `r len` values. \newline
+
+After generating your sample, plot the empirical CDF, and plot the theoretic CDF (using plogis).
+```{r}
+plot(ecdf(acceptvalue))
+ax <- seq(-20, max(acceptvalue), by = 0.01)
+lines(ax, plogis(ax,0,1), col = "red")
+```
+
+### Task 4B:
+
+Use the metropolis algorithm to generate values from the logisitc distribution.
+
+For your proposal distribution, use a random uniform distribution that ranges from your current value - 1 to your current value + 1. 
+
+As a reminder, the steps of the algorithm are as follows:
+
+- Propose a single value from the proposal distribution.
+- Calculate the probability of moving = min(1, P(proposed)/P(current))
+- Draw a random value to decide if you will move or not. If you move, update the current position. If you do not move, keep the current position for another iteration.
+- Repeat.
+
+Start at the terrible location x = -19.
+
+Run the Markov Chain for 10,000 iterations. Plot the first 1000 values of the chain and eyeball where you think the chain starts has finished 'burning-in' and is now drawing values from the target distribution. Throw away those initial values.
+
+Plot a histogram of the remaining values.
+
+Plot the empirical CDF of the remaining values, and plot the theoretic CDF (using plogis).
+```{r}
+set.seed(1)
+x <- -19
+table <- c()
+proposal <- function(x) {return(runif(1, x-1, x+1))}
+for (i in 1:10000) {
+  prox <- proposal(x)
+  acceptrate <- min(1, dlogis(prox)/dlogis(x))
+  rate <- runif(1, 0, 1)
+  if(acceptrate > rate) {
+   table[length(table)+1] <- prox
+   x <- prox
+  } else {
+    table[length(table)+1] <- x}
+}
+plot(c(1:1000), table[1:1000], type = 'l')
+#the chain starts has finished ‘burning-in’ at around x=200 (200th iteration).
+hist(table[200:10000])
+plot(ecdf(table[200:10000]))
+myx<-seq(min(table[200:10000]), max(table[200:10000]), by = 0.01)
+lines(myx, plogis(myx), col = "red")
+```
+
+## Problem 5 - MCMC - the effect of sigma in the proposal distribution
+
+
+Write code to perform 50,000 iterations of the metropolis algorithm for a single continuous random variable.
+
+Let the pdf of the target distribution be:
+
+$$f(x) = c \cdot ( sin(x) + 2 )$$ 
+
+for $0 \le x \le 3 * \pi$, where c is some constant so that $\int_0^{3\pi} f(x) dx = 1$
+
+For your proposal distribution, use a normal distribution, centered at the current value, with a standard deviation of $\sigma$, which we will adjust in this problem.
+
+Begin your Markov Chain at the location x = 2.
+
+Keep in mind that the probability of a value greater than 3 * pi or less than 0 is 0.
+
+Gather 50,000 samples using MCMC three different times. 
+
+The first time, use a sigma of 0.5 for the proposal distribution.
+
+The second time, use a sigma of 3 for the proposal distribution.
+
+The third time, use a sigma = 20.
+
+Keep track of whether your proposed values are accepted or rejected, and print out the acceptance ratio.
+
+For each MCMC run, print out the acceptance ratio, create a histogram of the sampled values, and plot the first 500 values of the chain `plot(x[1:500], type = "l")`. 
+
+Sigma of 0.5:
+```{r}
+set.seed(1)
+c <- 1/(2+6*pi)
+f<- function(x){
+  ifelse(x <= 3*pi & x >= 0,return (c*(sin(x) + 2)), return (0))}
+
+x <- 2
+table <- c()
+iter <- 0
+for(i in 1:50000){
+  prox <- rnorm(1,x,0.5)
+  acceptrate <- min(1, f(prox)/f(x))
+  rate <- runif(1,0,1)
+  if(acceptrate > rate){
+    table[length(table)+1] <- prox
+    x <- prox
+    iter <- iter+1
+  }else{
+    table[length(table)+1] <- x
+  }
+}
+ratio <- iter/50000
+ratio
+hist(table)
+plot(table[1:500], type = "l")
+
+```
+
+
+Sigma of 3:
+```{r}
+set.seed(1)
+
+table2 <- c()
+iter <- 0
+for(i in 1:50000){
+  prox <- rnorm(1,x,3)
+  acceptrate <- min(1, f(prox)/f(x))
+  rate <- runif(1,0,1)
+  if(acceptrate > rate){
+    table2[length(table2)+1] <- prox
+    x <- prox
+    iter <- iter+1
+  }else{
+    table2[length(table2)+1] <- x
+  }
+}
+ratio <- iter/50000
+ratio
+hist(table2)
+plot(table2[1:500], type = "l")
+```
+
+Sigma of 20:
+```{r}
+set.seed(1)
+
+table20 <- c()
+iter <- 0
+for(i in 1:50000){
+  prox <- rnorm(1,x,20)
+  acceptrate <- min(1, f(prox)/f(x))
+  rate <- runif(1,0,1)
+  if(acceptrate > rate){
+    table20[length(table20)+1] <- prox
+    x <- prox
+    iter <- iter+1
+  }else{
+    table20[length(table20)+1] <- x
+  }
+}
+ratio <- iter/50000
+ratio
+hist(table20)
+plot(table20[1:500], type = "l")
+```
+
+
+

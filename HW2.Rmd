@@ -1,0 +1,214 @@
+---
+title: "Stats 102C, Homework 2"
+output: html_document
+author: "Yunshuang Jiang"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Homework Questions, copyright Miles Chen. Do not post or distribute without permission.
+
+# Reading and viewing:
+
+## Do not skip reading
+
+- Introducing Monte Carlo Methods with R: Section 2.2, 3.1, 3.2
+- Shapiro-Wilk Test on Youtube: <https://www.youtube.com/watch?v=dRAqSsgkCUc>
+
+## Problem 1 - Box Muller Transform
+
+Write a function called `my_rnorm()` that will generate samples from a normal distribution. The function must be able to accept optional arguments for mean and sd. The default values are 0 and 1 if the mean and sd are not specified.
+
+Use `runif()` as your source of randomness. You are not allowed to use any of R's normal distribution function (e.g. pnorm, qnorm, dnorm). 
+
+Use your function to generate 500 values from the standard normal distribution.
+
+Plot the kernel density estimate of the resulting sample. Plot the theoretic density (you can use dnorm) in another color on top of the kernel density estimate. Comment on the plot.
+
+Create a qqnorm plot. Comment on the plot.
+
+Perform a Shapiro-Wilk test for normality. Be sure to comment on the results.
+
+```{r}
+my_rnorm <- function(n, mean = 0, sd = 1){
+  u <- runif(n, 0, 1)
+  v <- runif(n, 0, 1)
+  theta <- 2*pi*u
+  r <- sqrt(-2*log(v))
+  x <- r*cos(theta)
+  y <- r*sin(theta)
+  return(data.frame(x=x, y=y))
+}
+
+result1 <- my_rnorm(500)
+plot(density(result1$y))
+lines(density(rnorm(500)), col="red")   
+qqnorm(result1$y)
+shapiro.test(result1$y)    
+```
+
+comment:In the Kernel density plot, my resulting sample density plot(in black) looks similar to the theoretic density plot(in red). The p-value is not significant, which means we do not have evidence to show that my resulting sample is not from the theoretic distribution (standard normal distribution). \newline
+
+
+## Problem 2 - RNG based on distribution definitions and convolutions
+
+Using only `runif()` and/or `rnorm()` and the definitions of distributions, generate 500 samples from each of the following distributions. You are not allowed to use any of R's distribution functions for the generation of random values.
+
+For each distribution:
+
+- After generating your 500 samples, plot the kernel density estimate of the resulting sample. Plot the theoretic density (you can use dchisq, dt, etc.) in another color on top of the kernel density estimate. Comment on the plot.
+- Plot the empirical CDF function of your data. Add the theoretic CDF (you can use pchisq, pt, etc.) of the distribution to the same plot (in a different color).
+- Use the Kolmogorov-Smirnov test to compare your generated samples to the theoretic distributions. Be sure to print out the resulting p-value and comment on the sample produced by your function.
+
+### Problem 2a:
+
+- Beta distribution with shape parameters 4 and 2
+```{r}
+library(dplyr)
+gamma2 <- c()
+gamma4 <- c()
+beta <- c()
+for (i in 1:500){
+
+  gamma2[i] <- (-log(runif(1))) + (-log(runif(1)))
+  gamma4[i] <- (-log(runif(1))) + (-log(runif(1))) + (-log(runif(1))) + (-log(runif(1)))
+  
+  beta[i] <- gamma4[i]/(gamma4[i]+gamma2[i])
+}
+plot(density(beta))
+lines(density(rbeta(500, 4, 2)), col="red")
+theo_beta <- rbeta(500, 4, 2)
+plot(x=beta, y=pbeta(beta, 4,2))
+points(x=theo_beta, y=pbeta(theo_beta,4,2), col="red", pch=24, cex = 0.3)
+ks.test(beta, pbeta, shape1=4, shape2=2)        
+```
+
+Comment: In the Kernel density plot, my resulting sample density plot(in black) looks similar to the theoretic density plot(in red). The p-value is not significant, which means we do not have evidence to show that my resulting sample is not from the theoretic distribution (beta with shape parameter 4,2). \newline
+
+### Problem 2b:
+
+- Chi-squared distribution with 4 degrees of freedom
+```{r}
+chi <- c()
+for (i in 1:500) {
+  chi[i] <- rnorm(1)^2 + rnorm(1)^2 + rnorm(1)^2 + rnorm(1)^2
+}
+plot(density(chi))
+lines(density(rchisq(500,df=4)), col="red")
+theo_chi <- rchisq(500, 4)
+plot(x=chi, y=pchisq(chi, 4))
+points(x=theo_chi, y=pchisq(theo_chi,4), col="red", pch=24, cex = 0.3)
+ks.test(chi, pchisq, df=4)                    
+```
+
+Comment: In the Kernel density plot, my resulting sample density plot(in black) has a very similar shape compares to the theoretic density plot(in red). The p-value is not significant, which means we do not have evidence to show that my resulting sample is not from the theoretic distribution (chi-square with df=4). \newline
+
+### Problem 2c:
+
+- t-distribution with 4 degrees of freedom
+```{r}
+z <- c()
+v <- c()
+t <- c()
+for (i in 1:500) {
+  z[i] <- rnorm(1)
+  v[i] <- rnorm(1)^2 + rnorm(1)^2 + rnorm(1)^2 + rnorm(1)^2
+  t[i] <- z[i]/sqrt(v[i]/4)
+}
+plot(density(t))
+lines(density(rt(500,df=4)), col="red")
+theo_t <- rt(500, 4)
+plot(x=t, y=pt(t, 4))
+points(x=theo_t, y=pt(theo_t,4), col="red", pch=24, cex = 0.3)
+ks.test(t, pt, df=4)                         
+```
+
+Comment: In the Kernel density plot, my resulting sample density plot(in black) looks similar to the theoretic density plot(in red). The p-value is not significant, which means we do not have evidence to show that my resulting sample is not from the theoretic distribution (t-distribution with df=4). \newline
+
+## Problem 3 - Bivariate Normal RNG
+
+Use `rnorm()` to generate random values Z from N(0,1).
+
+Identify a lower triangular matrix A and vector b, such that b + AZ, will come from a multivariate normal, with mean c(1,-2) and covariance matrix matrix(c(9, 12, 12, 25), nrow = 2). You can use `chol()` for this, but you could be tested to do the decomposition of a 2x2 matrix by hand.
+
+Use the generated Z values and your matrix A and vector b to produce 500 pairs of values from the bivariate normal with mean c(1,-2) and covariance matrix matrix(c(9, 12, 12, 25), nrow = 2)
+
+Create a scatter plot of your data. Use pch = 19, and cex = 0.4 to make the size the points small. Add contour lines to the plot. See <https://stats.stackexchange.com/questions/31726/scatterplot-with-contour-heat-overlay>
+
+After generating your pairs of data, run a multivariate Shapiro-Wilk test to test the normality of your generated data. You'll need `library(mvnormtest)`
+
+See <http://www.statmethods.net/stats/anovaAssumptions.html>
+
+```{r}
+z1 <- c()
+z2<- c()
+x <- c()
+mean <- c(1, -2)
+cov <- matrix(c(9, 12, 12, 25), nrow = 2)
+a <- t(chol(cov))
+for (i in 1:500) {
+  z1[i] <- rnorm(1)
+  z2[i] <- rnorm(1)
+  x[[i]] <- mean + a %*% rbind(z1[i], z2[i])
+}
+result_x = unlist(x)[rep(c(TRUE, FALSE),250)]
+result_y = unlist(x)[rep(c(FALSE, TRUE),250)]
+result3 <- cbind(result_x, result_y)
+
+library(MASS)
+library(RColorBrewer)
+k <- 11
+my.cols <- rev(brewer.pal(k, "RdYlBu"))
+z <- kde2d(result3[,1], result3[,2], n=500)
+plot(x=result_x, y=result_y, pch = 19, cex = 0.4)
+contour(z, drawlabels=FALSE, nlevels=k, col=my.cols, add=TRUE)
+
+result3 <- rbind(result_x, result_y)
+library(mvnormtest)
+mshapiro.test(result3)
+```
+
+
+## Problem 4 - Monte Carlo Integration
+
+Estimate the following integral by using Monte Carlo estimation.
+
+$$\mu = \int_0^5 \exp(-0.5 (x-2)^2 - 0.1 |\sin(2x)|) dx$$
+
+Generate 5000 samples to estimate $\hat{\mu}$ and compute its standard deviation. Use `runif()` to generate the random uniform values.
+
+Create a plot using the cumulative mean (aka running mean) of the first 1000 values to show how the estimate 'settles' over the course of the samples. Add confidence bands 2 standard errors above and below the running mean. Be sure to use the running standard error for this part. Your plot should resemble figure 3.3 on page 67 of the textbook.
+
+Take note of the limits of the y-axis, in our next HW assignment, you'll compare the performance of classical Monte Carlo integration with importance sampling.
+
+```{r}
+# what the function looks like
+h <- function(x) exp(-0.5 * (x - 2) ^ 2 - 0.1 * abs( sin(2*x) ) )
+v <- seq(0,5, by = 0.01)
+plot(v, h(v), type = "l")
+```
+
+```{r}
+x <- runif(5000, 0, 5)
+h <- 5*h(x)
+mu_hat <- mean(h)
+mu_hat
+sd <- sqrt(var(h)/5000)
+sd
+```
+
+
+```{r}
+cummean = cumsum(h[1:1000]) / seq_along(h[1:1000]) 
+cumsd = sqrt(cumsum((h[1:1000]-cummean)^2))/seq_along(h[1:1000])
+cumsd[1] = 0
+plot(c(0,1000),c(min(cummean-2*cumsd),max(cummean+2*cumsd)), type="n", ylim=c(1,4)) 
+lines(seq(1,1000), cummean)
+lines(seq(1,1000), cummean+2*cumsd, col = 'blue')
+lines(seq(1,1000), cummean-2*cumsd, col = 'blue')
+```
+
+
+

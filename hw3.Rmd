@@ -1,0 +1,497 @@
+---
+title: "Stats 102C, Homework 3 - Intro to MCMC"
+output: html_document
+author: "Yunshuang Jiang UID 704439395"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Homework Questions, copyright Miles Chen. Do not post or distribute without permission.
+
+## Reading
+
+- Chapter 2 of Doing Bayesian Data Analysis
+- Chapter 6 of Doing Bayesian Data Analysis
+- <http://varianceexplained.org/statistics/beta_distribution_and_baseball/>
+- <http://varianceexplained.org/r/credible_intervals_baseball/>
+
+## Review of Monte Carlo Integration
+
+In the last homework, we estimated the integral of $h(x)$ by using Monte Carlo estimation.
+
+$$h(x) = \exp(-0.5 (x-2)^2 - 0.1 |\sin(2x)|)$$
+
+$$I = \int_0^5 h(x) dx = \int_0^5 \exp(-0.5 (x-2)^2 - 0.1 |\sin(2x)|) dx$$
+
+We want to estimate the value of I. We say that the average value of $h(x)$ over the integral is:
+
+$$\frac{1}{5} I = E_f[h(X)]$$
+
+Recall that for MC integration, we estimate 
+
+$$E_f[h(X)] = \int_\mathcal{X} h(x)f(x) dx$$
+
+Because we are using uniform sampling over the interval (0,5) 
+
+$$f(x) = 1/5$$
+
+Thus, 
+
+$$\frac{1}{5} I  = \int_0^5 h(x) f(x) dx \approx \frac{1}{N}\sum_{j = 1}^N h(x_j)$$
+
+Where $x_j \sim \text{Unif}(0,5)$
+
+```{r}
+n = 5000
+h <- function(x) exp(-0.5 * (x - 2) ^ 2 - 0.1 * abs( sin(2*x) ) )
+v <- seq(0,5, by = 0.01)
+plot(v, h(v), type = "l")
+axis(side = 2, at = seq(0,1, by = 0.1))
+```
+
+When we sample randomly from the uniform distribution, every value between 0 and 5 have an equal chance of being selected.
+
+Let's say I drew 15 x-values that were equally spaced from 0.1 to 4.9. To estimate the expected value of our function, I would calculate the value of the function at each x (shown in red below). I'd then take those values and find the mean of them. (Shown as green dots on the y-axis. I take the mean of those 15 green points.)
+
+```{r fifteen_uniform_points}
+x <- seq(0.1, 5, by = 0.3)
+n <- length(x)
+h_x <- h(x)
+
+plot(v, h(v), type = "l", ylim = c(0,1))
+axis(side = 2, at = seq(0,1, by = 0.1))
+points(x, h_x, pch = 19, cex = 0.5, col = 'red')
+points(rep(0,n), h_x, pch = 19, cex = 0.5, col = 'green')
+segments(x, h_x, rep(0, n), h_x, lty = "dotted")
+```
+
+In this case, the values of those 15 green points are:
+
+```{r estimate_fifteen}
+round(h_x, 4) # rounded to 4 decimal places for clarity
+```
+
+And the mean of these values is:
+
+```{r}
+mean(h_x)
+```
+
+And the estimate of the integral would be:
+
+```{r}
+mean(h_x) * 5
+```
+
+If I draw **RANDOM** uniform samples, we can see how the estimate of $\mu$ fluctuates quite a bit before 'settling' down.
+
+```{r threeMCchains}
+## Monte Carlo Integration using uniform random sampling
+n = 200
+
+# First series
+set.seed(1)
+x <- runif(n, 0, 5)
+hbar_n <- cumsum(h(x))/c(1:n)
+mu_n <- hbar_n * 5
+
+
+plot(1:n, mu_n, type = "l", ylim = c(1, 4.5))
+abline(h = 2.29583, lty='dotted', col = 'red')
+
+# Second series using a different random seed
+set.seed(2)
+x <- runif(n, 0, 5)
+hbar_n <- cumsum(h(x))/c(1:n)
+mu_n <- hbar_n * 5
+lines(1:n, mu_n, type = "l", col = 'blue')
+
+# Third series with different random seed point
+set.seed(3)
+x <- runif(n, 0, 5)
+hbar_n <- cumsum(h(x))/c(1:n)
+mu_n <- hbar_n * 5
+lines(1:n, mu_n, type = "l", col = 'green')
+
+```
+
+The estimate of the integral $\hat{I}$ is .
+
+```{r}
+print(mu_n[n])
+```
+
+
+## Importance Sampling (weighted monte carlo estimation)
+
+With importance sampling, we don't draw from the distribution $f(x)$, but a trial distribution $g(x)$.
+
+Even though it is easy to draw from $f(x)$, which is the uniform distribution, we may see that it can be advantageous to draw from a different distribution that more closely resembles the target function.
+
+## Importance Sampling
+
+We will use the normal distribution N(2, 1) as the trial distribution g(x) to estimate the same integral by importance sampling.
+
+$$I = \int_0^5 \exp[-0.5 (x-2)^2 - 0.1 |\sin(2x)|] dx$$
+
+$$\frac{1}{5} I = E_f[h(X)]  = \int_0^5 h(x) f(x) dx = \int_0^5 h(x) \frac{f(x)}{g(x)} g(x)dx \approx \frac{1}{N}\sum_{j = 1}^N h(x_j)\frac{f(x_j)}{g(x_j)}$$
+
+
+```{r}
+# what the function looks like, along with the normal distribution
+h <- function(x) exp(-0.5 * (x - 2) ^ 2 - 0.1 * abs( sin(2*x) ) )
+v <- seq(0,5, by = 0.01)
+norm_pdf <- dnorm(v, mean = 2, sd = 1)
+
+# If we were doing accept-reject sampling, this is a way to find the optimal ratio to make 
+# sure our proposal distribution is always greater than our target distribution
+optimize(f = function(x){  dnorm(x,2,1) / h(x) }, interval=c(0,5))
+# the function inside optimize is the proposal divided by the target.
+# Optimize gives the location where the ratio between the proposal and target is smallest.
+# If we multiply the proposal distribution by 1/ratio, then the proposal distribution will always be = target
+# distribution at this location. So we use this value as our constant M.
+m <- optimize(f = function(x){  dnorm(x,2,1) / h(x) }, interval=c(0,5))$objective
+# Technically, this does not matter at all for importance sampling, but it makes it easier to see that 
+# the trial distribution matches the desired function quite well.
+
+plot(v, norm_pdf * (1/m), type = "l", col = "blue")  # trial distribution
+lines(v, h(v), type = "l", col = "black")  # desired function
+
+# we see a pretty good match between the trial distribution and desired function.
+```
+
+We will use importance sampling to estimate $\hat{I}$. We will use `rnorm()` to generate random normal values.
+
+Keep in mind that $f(x) = 1/5$.
+
+$g(x)$ is the normal density with mean 2 and sd 1. However, we must throw away any values outside of the range (0, 5).
+
+If we do that, then $g(x)$ is no longer a probability density because it will no longer integrate to 1.
+
+$$\int_{0}^5 g(x) \ne \int_{-\infty}^\infty g(x) = 1$$
+
+To fix this, we need to find a constant to multiply with $g(x)$ so that
+
+$$\int_{0}^5 C \cdot g(x) = 1$$
+
+## Problem 1
+
+Find C so that $\int_{0}^5 C \cdot g(x) = 1$. Let $g(x)$ be the normal density with mean 2 and sd 1. Hint: figure out how much of the distribution is 'cut off' at 0 and 5, and find C accordingly.
+
+```{r}
+con = 1/(pnorm(5,2,1)-pnorm(0,2,1))
+con
+```
+
+## Problem 2
+
+Use the code in the code chunk 'threeMCchains' as a starting point.
+
+Change runif to rnorm. Make sure you remove values of x below 0 and above 5. Adjust how $\bar{h}_n$ is calculated according to importance sampling. Then estimate the integral.
+
+When you create your plot, also adjust the axes to fit the samples better.
+
+Finally, comment on how quickly the method using importance sampling converges to the expected value versus the uniform sampling method.
+
+```{r, error = TRUE}
+## Monte Carlo Integration using importance sampling
+n = 200
+
+# First series
+set.seed(1)
+x <- c()
+while(length(x)< n){
+  xb = rnorm(1,2,1)
+  if(xb>5 | xb<0) {
+    next
+  }else {
+    x <- c(x,xb)
+  }
+}
+
+g <- function(x){return(con*dnorm(x,2,1))}
+f <- 1/5
+hbar_n <- cumsum(h(x)*f/g(x))/c(1:n)
+mu_n <- hbar_n * 5
+
+plot(1:n, mu_n, type = "l", ylim = c(2, 2.5))
+abline(h = 2.29583, lty='dotted', col = 'red')
+
+# Second series using a different random seed
+set.seed(2)
+x2 <- c()
+while(length(x2)< n){
+  xb = rnorm(1,2,1)
+  if(xb>5 | xb<0) {
+    next
+  }else {
+    x2 <- c(x2,xb)
+  }
+}
+g <- function(x){return(con*dnorm(x2,2,1))}
+f <- 1/5
+hbar_n2 <- cumsum(f*h(x2)/g(x2))/c(1:n)
+mu_n2 <- hbar_n2 * 5
+lines(1:n, mu_n2, type = "l", col = 'blue')
+
+# Third series with different random seed point
+set.seed(3)
+x3 <- c()
+while(length(x3)< n){
+  xb = rnorm(1,2,1)
+  if(xb>5 | xb<0) {
+    next
+  }else {
+    x3 <- c(x3,xb)
+  }
+}
+g <- function(x){return(con*dnorm(x3,2,1))}
+f <- 1/5
+hbar_n3 <- cumsum(h(x3)*f/g(x3))/c(1:n)
+mu_n3 <- hbar_n3 * 5
+lines(1:n, mu_n3, type = "l", col = 'green')
+```
+
+Comment: Using importance sampling method help converges to the expected value quickly at around n = 60. Compares to uniform sampling method, it converges to the expected value at around n= 150. Plus, using importance sampling method, the initial turbulence is less (range from 2.2 to 2.4) compares to uniform sampling method (that has the range from 1 to 4).\newline
+
+# Bayesian Thinking
+
+### Problem 3: Doing Bayesian Data Analysis: Exercise 5.1
+
+Prior test: \newline
+$$P(\theta = present | T=+) = \frac{P(T=+ | \theta =present) P(\theta=present)} {\Sigma P(T=+)} $$
+```{r}
+new_present <- (0.99*0.001)/ ((0.99*0.001)+(0.05*(1-0.001)))
+```
+
+$$P(\theta = present | T=+) = \frac{0.99*0.001}{0.99*0.001+0.05*(1-0.001)} =`r new_present` $$
+
+re-test: \newline
+$$P(\theta =present_{new}|(T=-)) = \frac{P(T=- | \theta =present_{new}) P(\theta=present_{new})} {\Sigma P(T=-)} $$
+```{r}
+new_absent <- 1-new_present
+b <- (1-0.99)*new_present/((1-0.99)*new_present + (1-0.05)*new_absent)
+```
+
+$$P(\theta = present_{new}| T=-) = \frac{(1-0.99)*`r new_present`}{(1-0.99)*`r new_present`+ (1-0.05)* `r new_absent`} =`r b` $$ 
+
+
+### Problem 4: Doing Bayesian Data Analysis: Exercise 5.3 
+
+Part a) \newline
+$$P(\theta =present|T=-) = \frac{P(T=- | \theta =present) P(\theta=present)}{\Sigma P(T=-)} $$
+```{r}
+new_present2 <- (1-0.99)*0.001/((1-0.99)*0.001+(1-0.05)*(1-0.001))
+```
+
+$$P(\theta = present | T=-) =\frac{(1-0.99)*0.001}{(1-0.99)*0.001+(1-0.05)*(1-0.001)}= `r new_present2`$$
+Part b) \newline
+$$P(\theta =present_{new}|T=+) = \frac{P(T=+ | \theta =present_{new}) P(\theta=present_{new})}{\Sigma P(T=-)} $$
+```{r}
+new_absent2 <- 1-new_present2
+c <- 0.99*new_present2/(0.99*new_present2+0.05*new_absent2)
+```
+
+$$P(\theta = present_{new} | T=+) =\frac{0.99* `r new_present2`}{0.99*`r new_present2` + 0.05 *`r new_absent2`} = `r c`$$
+Comment: the result in Exercise 5.1 and exercise 5.3 are the same. \newline
+
+
+# Modeling the Beta-Binomial Model with grid approximation
+
+In Bayesian inference, we often write the posterior distribution of some parameter $\theta$ based on the data $y$ as follows:
+
+$$P(\theta | y) = \frac{P(y | \theta)P(\theta)}{P(y)}$$
+
+We label $P(y | \theta)$ the *likelihood* of the data given the value of the parameter $\theta$.
+
+$P(\theta)$ represents our *prior* distribution of the possible parameter values of $\theta$.
+
+$P(y)$ is the *marginal* distribution of the observed data $y$. This is generally found by summing or integrating the joint probability of the data $y$ and parameter $\theta$ across all possible values of $\theta$. In many cases, this integral is intractable. The good news is that it is just a constant.
+
+As such, we often say that the posterior distribution is proportional to the numerator.
+
+$$P(\theta | y) \propto P(y | \theta)P(\theta)$$
+
+## Summary of Ch 6
+
+If the beta distribution prior has distribution $\text{Beta}(\alpha, \beta)$
+
+And our data has $z$ successes, and $N - z$ failures, the posterior distribution will have distribution:
+
+$$\text{Beta}(z + \alpha, N - z + \beta)$$
+
+Let's further explore the relationship between the prior, the likelihood, and the posterior distributions.
+
+## The beta prior for baseball batting average
+
+Read: <http://varianceexplained.org/statistics/beta_distribution_and_baseball/>
+
+As seen in the blog article, we will model the prior distribution of baseball batters' batting average as $\text{Beta}(81, 219)$
+
+To emphasize that we are doing grid approximation, I am plotting the distribution as points
+
+```{r}
+s <- seq(0.0, 1, by = 0.005)
+plot(s, dbeta(s, 81, 219), pch = 19, cex = 0.2, ylab = 'density')
+arrows(qbeta(0.025, 81, 219), 0.5, qbeta(0.975, 81, 219), 0.5, col = 'red', code = 3, angle = 90, length = 0.05) # adding an 'arrow' to display a credibility interval at the level y = 0.5
+```
+
+Credibility interval: 
+
+```{r}
+print( c( qbeta(0.025, 81, 219), qbeta(0.975, 81, 219)))  # equal tailed Credibility interval
+```
+
+Before seeing any data, my prior distribution tells me that there is a 95% probability that the batter's batting average is between 0.2213 and 0.3216.
+
+## Problem 5
+
+Let's say you observe a player who had 10 at bats and has 4 base hits.
+
+Plot the likelihood of the data for values of p between 0.0 and 1. Use the same vector `s` for the locations of the grid approximation.
+
+```{r}
+plot(s, dbinom(4, 10, s), pch = 19, cex = 0.2, ylab = 'density')
+```
+
+Use the known results for the posterior distribution: $\text{Beta}(z + \alpha, N - z + \beta)$. Plot the posterior distribution of p after considering the data (use points, rather than a line to emphasize that we are using grid approximation). Use red points for the posterior. Also plot the prior distribution in black. You will see just a slight shift between the prior and the posterior.
+
+```{r}
+plot(s, dbeta(s, 81, 219), pch = 19, cex = 0.2, ylab = 'density')
+points(s, dbeta(s, 81+4, 219+6), pch = 19, cex = 0.2, col = 'red')
+```
+
+Use `qbeta()` to create a 95% credibility interval based on the posterior distribution.
+
+```{r}
+pd <-c(qbeta(0.025, 81+4, 219+6), qbeta(0.975, 81+4, 219+6))
+pd
+```
+
+
+Use classical statistics to create a 95% confidence interval for p based on the fact that you had 4 successful hits out of 10 trials. (Even though the large sample condition is not met, assume you can use the central limit theorem for the creation of the confidence interval.)
+
+```{r}
+ci <- c(qbinom(0.025, 10, 0.4)/10, qbinom(0.975, 10, 0.4)/10) 
+ci
+```
+
+Add both the credibility interval (in red at the level y = 0.5) and the confidence interval (in blue at the level y = 0.6) to the plot so you can make a visual comparison.
+
+```{r}
+plot(s, dbeta(s, 81, 219), pch = 19, cex = 0.2, ylab = 'density',ylim = c(0,20))
+points(s, dbeta(s, 81+4, 219+6), pch = 19, cex = 0.2, ylab = 'density', col = 'red')
+arrows(pd[1], 0.5, pd[2], 0.5, col = 'red', code = 3, angle = 90, length=0.05) 
+arrows(ci[1], 0.6, ci[2], col = 'blue', code = 3,angle = 90,length=0.05) 
+```
+
+
+## Problem 6a
+
+Let's say you observe a player who had 100 at bats and has 35 base hits.
+
+Plot the posterior distribution of p after considering the data (in red). Also plot the prior (in black). Comment on the difference between the prior and the posterior.
+
+```{r}
+plot(s, dbeta(s, 81, 219),pch = 19, cex = 0.2, ylab = 'density',ylim = c(0,20))
+points(s, dbeta(s, 81+35, 219+65), col = 'red',pch = 19, cex = 0.2, ylab = 'density')
+```
+
+Comment: The posterior distribution in red slightly shifted to the right and have a higher maximum value.\newline
+
+Find a 95% credibility interval based on the posterior. Create a classical 95% confidence interval. Compare the two intervals.
+
+```{r}
+cred <- c(qbeta(0.025, 81+35, 219+65), qbeta(0.975, 81+35, 219+65))
+clas <- c(qbinom(0.025, 100, 0.35)/100, qbinom(0.975, 100, 0.35)/100)
+```
+
+The credibility interval is `r cred`. \newline
+The classical interval is `r clas`. \newline
+Comment: The classical confidence interval is wider than credibility interval.\newline
+
+Add both the credibility interval (in red, at y = 0.5) and the confidence interval (in blue, at y = 0.6) to the plot so you can make a visual comparison.
+
+```{r}
+plot(s, dbeta(s, 81, 219),pch = 19, cex = 0.2, ylab = 'density',ylim = c(0,20))
+points(s, dbeta(s, 81+35, 219+65), col="red",pch = 19, cex = 0.2, ylab = 'density')
+arrows(cred[1], 0.5, cred[2], 0.5, col = 'red', code = 3, angle = 90, length=0.05) 
+arrows(clas[1], 0.6, clas[2], 0.6, col = 'blue', code = 3, angle = 90, length=0.05) 
+```
+
+Comment: In this plot, we could see that the posterior distribution in red is slightly shifts to the right compares to prior distribution in black. The posterior distribution also has a higher maximum. The classical confidence interval in blue is almost twice as wide as the credibility interval. \newline
+
+## Problem 6b
+
+Let's say you observe a player who had 500 at bats and has 175 base hits.
+
+Plot the posterior distribution of p after considering the data. Also plot the prior. Comment on the difference between the prior and the posterior.
+
+```{r}
+plot(s, dbeta(s, 81, 219),pch = 19, cex = 0.2, ylab = 'density',ylim = c(0,30))
+points(s, dbeta(s, 81+175, 219+325),col="red",pch = 19, cex = 0.2, ylab = 'density')
+```
+
+
+Find a 95% credibility interval based on the posterior. Create a classical 95% confidence interval. Compare the two intervals.
+```{r}
+cred2 <- c(qbeta(0.025, 81+175, 219+325), qbeta(0.975, 81+175, 219+325))
+clas2 <- c(qbinom(0.025, 500, 0.35)/500, qbinom(0.975, 500, 0.35)/500)
+```
+
+The credibility interval is `r cred2`. \newline
+The classical interval is `r clas2`. \newline
+
+
+Add both the credibility interval (in red, at y = 0.5) and the confidence interval (in blue, at y = 0.8) to the plot so you can make a visual comparison.
+```{r}
+plot(s, dbeta(s, 81, 219),pch = 19, cex = 0.2, ylab = 'density',ylim = c(0,30))
+points(s, dbeta(s, 81+175, 219+325),col="red", pch = 19, cex = 0.2, ylab = 'density')
+arrows(cred2[1], 0.5, cred2[2], 0.5, col = 'red', code = 3, angle = 90, length=0.05) 
+arrows(clas2[1], 0.6, clas2[2], 0.6, col = 'blue', code = 3, angle = 90, length=0.05) 
+```
+
+Comment: Compare to 6a, the posterior distribution shifts even more to the right, and also has a higher maximum compares to the one in 6a. The classical confidence interval is still slightly wider than the credibility interval in 6b, but compared to the 6a, the two confidence intervals are closer together and the classical confidence interval gets smaller in range. \newline
+
+## Problem 6c
+
+Finally, let's say you observe a player who had 5000 at bats and has 1750 base hits.
+
+Plot the posterior distribution of p after considering the data. Also plot the prior.
+
+Add both the credibility interval (in red, at y = 0.5) and the confidence interval (in blue, at y = 1) to the plot so you can make a visual comparison.
+
+```{r}
+cred3<- c(qbeta(0.025, 81+1750, 219+3250), qbeta(0.975, 81+1750, 219+3250))
+clas3 <- c(qbinom(0.025, 5000, 0.35)/5000, qbinom(0.975, 5000,0.35)/5000)
+plot(s, dbeta(s, 81, 219),pch = 19, cex = 0.2, ylab = 'density', ylim = c(0,50))
+points(s, dbeta(s, 81+1750, 219+3250),col="red", pch = 19, cex = 0.2, ylab = 'density')
+arrows(cred3[1], 0.5, cred3[2], 0.5, col = 'red', code = 3, angle = 90,length=0.05 ) 
+arrows(clas3[1], 0.6, clas3[2], 0.6, col = 'blue', code = 3, angle = 90, length=0.05) 
+```
+
+The credibility interval is `r cred3`. \newline
+The classical interval is `r clas3`. \newline
+Comment: Compare to 6a and 6b, the posterior distribution shifts even more to the right, and also has a higher maximum compares to the ones in 6a and 6b. The classical confidence interval is very close to credibility interval in 6c, they have a very similar range. \newline
+
+### As the amount of data increases, how do the results of the Bayesian credibility interval compare to the results of the classical confidence interval?
+
+The Bayesian credibility interval and classical confidence interval becomes very similar to each other in term of center and range as we get have more data. \newline
+
+
+### Problem 7: Doing Bayesian Data Analysis: Exercise 6.5
+
+When it says use the prior from exercise 6.4, they are refering to a Beta(0.1, 0.1) prior, as it appears in Figure 6.1.
+
+When it asks, 'what is the predicted probability of heads for the 11th flip?', they are asking for the expected values (mean) of the posterior distribution of p.
+
+Part a) \newline
+If we believe the coin is minted by the government and has not been tampered with, the expected value of getting head or tail should be close to 0.5. Thus we choose our prior distribution to be beta(200,200). After 10 trails we observed 9 heads and 1 tail, the expected value of getting head for the 11th flip with the updatd posterior distribution is 209/41= 0.50976. It is still very close to the original expected value. \newline
+
+Part b) \newline
+If we believe the coin is unfair, the expected value of having head or tail will be ethier close to 0 or 1 (getting nearly all tails or all heads). Then our prior distribution will be beta(0.1,0.1). After obsevered 9 heads and 1 tail, we update our posterior distribution with the expected value of getting head for the 11th flip 9.1/10.2 = 0.89216. \newline
+
+
+

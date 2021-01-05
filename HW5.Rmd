@@ -1,0 +1,155 @@
+---
+title: "Stats 102C, Homework 5 - Multivariate MCMC"
+output: html_document
+author: Yunshuang Jiang
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Homework questions copyright Miles Chen. Do not post or distribute without permission.
+
+There are three problems in this homework. They total to 80 points. The other 20 points will be free, as long as you turn something in.
+
+# Problem 1 (20 pts)
+
+Understand and use the deciphering R code (available in Week 7) to decode the following messages:
+
+message 1: "EFS O TPZS YBZS SP LP BCPZL CBT IQPINQ BNOJQ RQCBRVQT PA DPF JBZS AQNI SABS WBOT SAQ JBS YQRQ BNN CBT AQRQ OC CBT DPFRQ CBT APY TP DPF VZPY OC CBT WBOT BNOJQ DPF CFWS EQ WBOT SAQ JBS PR DPF YPFNTZS ABGQ JPCQ AQRQ"
+
+message 2 (uses a different cipher from message 1): "Y CYLZ OZN JYSD ZFE SNGNJ XPHN OP HN Y CYLZ SPSN PM OZYL ZFE ZFWWNSNE LP EP FVV CZP VYGN OP LNN LBXZ OYHNL ABO OZFO YL SPO MPJ OZNH OP ENXYEN FVV CN ZFGN OP ENXYEN YL CZFO OP EP CYOZ OZN OYHN OZFO YL DYGNS OP BL"
+
+All punctutation and non-letters (e.g. apostrophes) have been removed in the text.
+
+You may choose to modify a few parameters in the code.
+
+One is the weight used to combine the probability values, in the line of code:
+
+```c
+weight = 0.10
+cur.combined.loglike = cur.loglike + weight * cur.loglike.of.text
+```
+
+The other is the value to return if a word does not appear in the lexicon.
+
+```c
+if (is.null(lexical.probability) || is.na(lexical.probability))
+  {
+    return(1e-10) # for words that don't exist in the lexicon, assign a small non-zero probability
+  }
+```
+
+Unfortunately, the lexicon we are using has some significant shortcomings (and our code would be greatly improved if the lexicon were of higher quality). While the lexicon does assign probabilities to many words, it also omits some important words like contractions such as I'm, you're, along with plurals of nouns (a major problem). Extra credit to someone who figures out how to use word stemming (see library corpus function stemmer) to improve the deciphering code performance. 
+
+Adjusting the 'penalty' for a word not listed in the lexicon allows for words like Im, youre, but also allows for nonsense words.
+
+## Results
+
+For each coded message, display the "max.decode" result. This will not necessarily be the correct deciphering.
+
+Based on your max.decode result, your reasoned deduction, and the power of the Internet (these are somewhat famous quotes), provide what you believe to be the correct deciphering of the text.
+
+### Important: Answer Prohibition
+
+Do not post the answer to this question on Piazza. Do not ask what the answer is. The problem does not ask you to include the code here, so I cannot verify if students actually did or did not attempt the problem on their own machine. As such, do not share what the answer is to this problem. Plus, it's kinda fun to see the code run, and I want you to experience that.
+
+### Your answers:
+
+**Message 1**
+
+max.decode: "BUT I DONT WANT TO GO ASONG SAD PEOPLE ALIME RESARKED OH FOU MANT HELP THAT CAID THE MAT WERE ALL SAD HERE IS SAD FOURE SAD HOW DO FOU KNOW IS SAD CAID ALIME FOU SUCT BE CAID THE MAT OR FOU WOULDNT HAVE MOSE HERE"
+
+true message:"But I dont want to go among mad people Alice remarked Oh you cant help that said the Cat Were all mad here Im mad Youre mad How do you know Im mad said Alice You must be said the Cat or you wouldnt have come here"
+
+**Message 2**
+
+max.decode: "I WISH THE DIRG HAN REVED COME TO ME I WISH RORE OF THIS HAN HAPPEREN SO NO ALL WHO LIVE TO SEE SUCH TIMES BUT THAT IS ROT FOD THEM TO NECINE ALL WE HAVE TO NECINE IS WHAT TO NO WITH THE TIME THAT IS GIVER TO US"
+
+true message: “I wish the Ring had never come to me I wish none of this had happened So do all who live to see such times but that is not for them to decide All we have to decide is what to do with the time that is given to us”
+
+# Problem 2: Multivariate Metropolis-Hastings Algorithm (30 pts)
+
+In the following two problems, we will compare two multivariate MCMC algorithms for sampling from a bivariate normal distribution.
+
+The target distribution will be a bivariate normal distribution centered at (0,0) with covariance matrix `rbind(c(1, .7), c(.7, 1))`.
+
+For the proposal distribution, use a multivariate uniform distribution centered at the current location (x1, x2), with a total span of 2. That is, sample $x_1'$ from $x_1 - 1$ to $x_1 + 1$, and sample $x_2'$ from $x_2 - 1$ to $x_2 + 1$.
+
+Because our proposal distribution is symmetric, the acceptance ratio reduces to $\frac{p(x_1',x_2')}{p(x_1,x_2)}$ (and this is just a Metropolis algorithm).
+
+Write the code to calculate the multivariate normal density yourself (consult wikipedia or your notes). Do not use `mvtnorm::dmvnorm()`, as the library mvtnorm would make sampling from the multivariate normal trivial. 
+
+Start at the arbitrary location: (10, 10)
+
+Do 1000 iterations of the Metropolis algorithm.
+
+Create a plot of the results of your chain, and create another plot after removing the 'burn-in' values. (That is, we started in a terrible location and it took a little while for our chain to reach the 'appropriate' region. Remove those exploratory values.)
+
+```{r, error = TRUE}
+pdf <- function(x,y) {return((1/(2*pi*sqrt(1-0.49)))*exp((x^2-1.4*x*y+y^2)/-1.02))}
+proposal <- function(x,y) {return(c(runif(1, x-1, x+1),runif(1, y-1, y+1)))}
+
+x <- c(10,10)
+table <- x
+set.seed(1)
+for (i in 1:1000) {
+  c1 <- x[1]
+  c2 <- x[2]
+  prox <- proposal(c1,c2)
+  rate <- min(1, pdf(prox[1],prox[2])/pdf(x[1],x[2]))
+  u <- runif(1)
+  if(rate >= u) {
+    x <- prox
+  }
+  table <- rbind(table, prox)
+}
+plot(table[,1], table[,2], type='b', pch=19, cex=0.2)
+
+# create another plot after removing the 'burn in values'
+plot(table[100:1000,1],table[100:1000,2], pch = 19, cex = 0.2) # adjust as necessary, this assumes the first 100 values are burn-in 
+
+```
+
+
+
+# Problem 3: The Gibbs Sampler (30 pts)
+
+Again, the target distribution will be a bivariate normal distribution centered at (0,0) with covariance matrix `rbind(c(1, .7), c(.7, 1))`.
+
+Using your notes as a guide, implement a (systematic) Gibbs sampler. In each iteration, you will generate each coordinate individually using the appropriate univariate conditional distribution.
+
+You are allowed to use the univariate `rnorm` function to generate random normal values.
+
+Again, start at the arbitrary location: (10, 10)
+
+Let the chain run for 1000 iterations.
+
+Create a plot of the results of your chain, and create another plot after removing the 'burn-in' values.
+
+```{r, error = TRUE}
+# write your code here
+set.seed(1)
+x <- c(10,10)
+
+table <- c()
+table[[1]] <- x
+for(i in 1:1000){
+  prox1<- rnorm(1, 0.7*x[2], sqrt(1-0.7^2))
+  prox2 <- rnorm(1, 0.7*prox1, sqrt(1-0.7^2))
+  prox <- c(prox1, prox2)
+  table[[length(table)+1]] <- prox
+   x <- prox
+}
+x1 <- c()
+x2 <- c()
+for(i in 1:length(table)){
+  x1[i] <- table[[i]][1]
+  x2[i] <- table[[i]][2]
+}
+x <- as.data.frame(cbind(x1,x2))
+
+plot(x[,1],x[,2], type = 'b', pch = 19, cex = 0.2)
+plot(x[3:1000,1],x[3:1000,2], pch = 19, cex = 0.2)
+```
+
